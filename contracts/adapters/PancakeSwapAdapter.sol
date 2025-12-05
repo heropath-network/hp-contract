@@ -21,6 +21,11 @@ import "../interfaces/IUniversalRouter.sol";
 contract PancakeSwapAdapter is IAdapter, Ownable {
     using SafeERC20 for IERC20;
 
+    // ============ Constants ============
+
+    /// @notice Adapter ID for registration in HPPropTrading
+    bytes32 public constant ADAPTER_ID = keccak256("PANCAKESWAP");
+
     // ============ Immutables ============
 
     /// @notice Universal Router address
@@ -36,10 +41,9 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
 
     // ============ Errors ============
 
-    error InvalidAddress();
-    error InvalidPath();
-    error SwapFailed();
-    error InsufficientOutput();
+    string private constant ERR_INVALID_ADDRESS = "Invalid address";
+    string private constant ERR_INSUFFICIENT_OUTPUT = "Insufficient output";
+    string private constant ERR_TRANSFER_FAILED = "Transfer failed";
 
     // ============ Constructor ============
 
@@ -49,7 +53,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
      * @param _wbnb WBNB token address
      */
     constructor(address _universalRouter, address _wbnb) Ownable(msg.sender) {
-        if (_universalRouter == address(0) || _wbnb == address(0)) revert InvalidAddress();
+        require(_universalRouter != address(0) && _wbnb != address(0), ERR_INVALID_ADDRESS);
         universalRouter = _universalRouter;
         wbnb = _wbnb;
     }
@@ -115,12 +119,12 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         amountOut = balanceAfter - balanceBefore;
 
         // Check slippage
-        if (amountOut < minAmountOut) revert InsufficientOutput();
+        require(amountOut >= minAmountOut, ERR_INSUFFICIENT_OUTPUT);
 
         // Transfer output to caller
         if (tokenOut == address(0)) {
             (bool success, ) = msg.sender.call{ value: amountOut }("");
-            if (!success) revert SwapFailed();
+            require(success, ERR_TRANSFER_FAILED);
         } else {
             IERC20(tokenOut).safeTransfer(msg.sender, amountOut);
         }

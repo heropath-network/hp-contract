@@ -124,7 +124,7 @@ describe("HPPropTrading", function () {
       const amount = ethers.parseEther("100") // More than deposited
       await expect(
         hpPropTrading.connect(admin).withdraw(ethers.ZeroAddress, amount, admin.address)
-      ).to.be.revertedWithCustomError(hpPropTrading, "InsufficientBalance")
+      ).to.be.revertedWith("Insufficient balance")
     })
   })
 
@@ -138,7 +138,7 @@ describe("HPPropTrading", function () {
       await hpPropTrading.connect(admin).registerAdapter(ADAPTER_ID, await mockAdapter.getAddress())
       await expect(
         hpPropTrading.connect(admin).registerAdapter(ADAPTER_ID, await mockAdapter.getAddress())
-      ).to.be.revertedWithCustomError(hpPropTrading, "AdapterAlreadyExists")
+      ).to.be.revertedWith("Adapter already exists")
     })
 
     it("should allow admin to remove adapter", async function () {
@@ -148,10 +148,7 @@ describe("HPPropTrading", function () {
     })
 
     it("should revert if removing non-existent adapter", async function () {
-      await expect(hpPropTrading.connect(admin).removeAdapter(ADAPTER_ID)).to.be.revertedWithCustomError(
-        hpPropTrading,
-        "AdapterNotFound"
-      )
+      await expect(hpPropTrading.connect(admin).removeAdapter(ADAPTER_ID)).to.be.revertedWith("Adapter not found")
     })
 
     it("should track adapter IDs correctly", async function () {
@@ -208,7 +205,7 @@ describe("HPPropTrading", function () {
         hpPropTrading
           .connect(allocator)
           .executeSwap(fakeAdapterId, await mockToken.getAddress(), ethers.ZeroAddress, 100, 0, "0x")
-      ).to.be.revertedWithCustomError(hpPropTrading, "AdapterNotFound")
+      ).to.be.revertedWith("Adapter not found")
     })
   })
 })

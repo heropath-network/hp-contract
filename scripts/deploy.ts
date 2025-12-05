@@ -2,7 +2,8 @@ import { ethers, upgrades, network } from "hardhat"
 import * as fs from "fs"
 import * as path from "path"
 
-const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP_V2"))
+// Computed locally for logging, but we read from contract to ensure consistency
+const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP"))
 
 // BSC Mainnet addresses
 const BSC_UNIVERSAL_ROUTER = "0xd9C500DfF816a1Da21A48A732d3498Bf09dc9AEB"
@@ -64,9 +65,11 @@ async function main() {
 
   // 3. Register PancakeSwapAdapter
   console.log("\n3. Registering PancakeSwapAdapter...")
-  const tx = await hpPropTrading.registerAdapter(PANCAKE_ADAPTER_ID, pancakeAdapterAddress)
+  const adapterId = await pancakeAdapter.ADAPTER_ID()
+  console.log("   Adapter ID from contract:", adapterId)
+  const tx = await hpPropTrading.registerAdapter(adapterId, pancakeAdapterAddress)
   await tx.wait()
-  console.log("   PancakeSwapAdapter registered with ID:", PANCAKE_ADAPTER_ID)
+  console.log("   PancakeSwapAdapter registered!")
 
   // 4. Verify roles
   console.log("\n4. Verifying roles...")
@@ -108,7 +111,7 @@ async function main() {
   console.log("HPPropTrading Implementation:", implementationAddress)
   console.log("ProxyAdmin:", proxyAdminAddress)
   console.log("PancakeSwapAdapter:", pancakeAdapterAddress)
-  console.log("PancakeSwap Adapter ID:", PANCAKE_ADAPTER_ID)
+  console.log("PancakeSwap Adapter ID:", adapterId)
   console.log("=========================================\n")
 }
 

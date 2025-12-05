@@ -50,11 +50,11 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
 
     // ============ Errors ============
 
-    error AdapterAlreadyExists(bytes32 adapterId);
-    error AdapterNotFound(bytes32 adapterId);
-    error InvalidAddress();
-    error InsufficientBalance();
-    error SwapFailed();
+    string private constant ERR_INVALID_ADDRESS = "Invalid address";
+    string private constant ERR_INSUFFICIENT_BALANCE = "Insufficient balance";
+    string private constant ERR_TRANSFER_FAILED = "Transfer failed";
+    string private constant ERR_ADAPTER_EXISTS = "Adapter already exists";
+    string private constant ERR_ADAPTER_NOT_FOUND = "Adapter not found";
 
     // ============ Initializer ============
 
@@ -86,7 +86,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
      * @param amount Amount to deposit
      */
     function depositToken(address token, uint256 amount) external {
-        if (token == address(0)) revert InvalidAddress();
+        require(token != address(0), ERR_INVALID_ADDRESS);
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         emit Deposited(token, msg.sender, amount);
     }
@@ -98,13 +98,13 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
      * @param to Recipient address
      */
     function withdraw(address token, uint256 amount, address to) external onlyRole(HP_DAO_ROLE) nonReentrant {
-        if (to == address(0)) revert InvalidAddress();
+        require(to != address(0), ERR_INVALID_ADDRESS);
 
         if (token == address(0)) {
             // Withdraw BNB
-            if (address(this).balance < amount) revert InsufficientBalance();
+            require(address(this).balance >= amount, ERR_INSUFFICIENT_BALANCE);
             (bool success, ) = to.call{ value: amount }("");
-            if (!success) revert SwapFailed();
+            require(success, ERR_TRANSFER_FAILED);
         } else {
             // Withdraw ERC20
             IERC20(token).safeTransfer(to, amount);
@@ -133,9 +133,8 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
      * @param adapter Adapter contract address
      */
     function registerAdapter(bytes32 adapterId, address adapter) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (adapter == address(0)) revert InvalidAddress();
-        if (!_adapters.set(adapterId, adapter)) revert AdapterAlreadyExists(adapterId);
-
+        require(adapter != address(0), ERR_INVALID_ADDRESS);
+        require(_adapters.set(adapterId, adapter), ERR_ADAPTER_EXISTS);
         emit AdapterRegistered(adapterId, adapter);
     }
 
@@ -144,8 +143,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
      * @param adapterId Adapter identifier to remove
      */
     function removeAdapter(bytes32 adapterId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (!_adapters.remove(adapterId)) revert AdapterNotFound(adapterId);
-
+        require(_adapters.remove(adapterId), ERR_ADAPTER_NOT_FOUND);
         emit AdapterRemoved(adapterId);
     }
 
@@ -168,13 +166,13 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
         bytes calldata extraData
     ) external onlyRole(ALLOCATOR_ROLE) nonReentrant returns (uint256 amountOut) {
         (bool exists, address adapter) = _adapters.tryGet(adapterId);
-        if (!exists) revert AdapterNotFound(adapterId);
+        require(exists, ERR_ADAPTER_NOT_FOUND);
 
         uint256 value = 0;
 
         if (tokenIn == address(0)) {
             // Sending BNB
-            if (address(this).balance < amountIn) revert InsufficientBalance();
+            require(address(this).balance >= amountIn, ERR_INSUFFICIENT_BALANCE);
             value = amountIn;
         } else {
             // Approve adapter to spend tokens
