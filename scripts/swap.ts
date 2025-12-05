@@ -31,8 +31,14 @@ const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
 const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP"))
 
 // Universal Router command codes
-const COMMAND_V2_SWAP_EXACT_IN = 0x08
 const COMMAND_V3_SWAP_EXACT_IN = 0x00
+const COMMAND_V2_SWAP_EXACT_IN = 0x08
+
+// V3 fee tiers
+const FEE_LOWEST = 100    // 0.01%
+const FEE_LOW = 500       // 0.05%
+const FEE_MEDIUM = 2500   // 0.25%
+const FEE_HIGH = 10000    // 1%
 
 // ABIs
 const HP_PROP_TRADING_ABI = [
@@ -85,6 +91,36 @@ function encodeV2SwapExactIn(
   const abiCoder = ethers.AbiCoder.defaultAbiCoder()
   const input = abiCoder.encode(
     ["address", "uint256", "uint256", "address[]", "bool"],
+    [recipient, amountIn, minAmountOut, path, payerIsUser]
+  )
+
+  return { commands, inputs: [input] }
+}
+
+function encodeV3Path(tokenIn: string, fee: number, tokenOut: string): string {
+  // V3 path: abi.encodePacked(tokenIn, fee, tokenOut)
+  // fee is uint24 (3 bytes)
+  const tokenInBytes = tokenIn.toLowerCase().replace("0x", "")
+  const feeBytes = fee.toString(16).padStart(6, "0") // 3 bytes = 6 hex chars
+  const tokenOutBytes = tokenOut.toLowerCase().replace("0x", "")
+  return "0x" + tokenInBytes + feeBytes + tokenOutBytes
+}
+
+function encodeV3SwapExactIn(
+  recipient: string,
+  amountIn: bigint,
+  minAmountOut: bigint,
+  path: string, // encoded path
+  payerIsUser: boolean
+): { commands: string; inputs: string[] } {
+  // Command: V3_SWAP_EXACT_IN (0x00)
+  const commands = ethers.hexlify(new Uint8Array([COMMAND_V3_SWAP_EXACT_IN]))
+
+  // Input encoding for V3_SWAP_EXACT_IN:
+  // (address recipient, uint256 amountIn, uint256 amountOutMin, bytes path, bool payerIsUser)
+  const abiCoder = ethers.AbiCoder.defaultAbiCoder()
+  const input = abiCoder.encode(
+    ["address", "uint256", "uint256", "bytes", "bool"],
     [recipient, amountIn, minAmountOut, path, payerIsUser]
   )
 
@@ -183,16 +219,24 @@ async function main() {
   // Use WBNB in path for native BNB
   const pathIn = tokenIn === ethers.ZeroAddress ? WBNB : tokenIn
   const pathOut = tokenOut === ethers.ZeroAddress ? WBNB : tokenOut
-  const swapPath = [pathIn, pathOut]
 
   const deadline = Math.floor(Date.now() / 1000) + 300 // 5 minutes
 
-  const { commands, inputs } = encodeV2SwapExactIn(
-    hpPropTradingAddress, // recipient is the contract (adapter will forward)
+  // Check adapter address first (needed for recipient)
+  const hpPropTrading = new ethers.Contract(hpPropTradingAddress, HP_PROP_TRADING_ABI, wallet)
+  const adapterAddress = await hpPropTrading.getAdapter(PANCAKE_ADAPTER_ID)
+  if (adapterAddress === ethers.ZeroAddress) {
+    throw new Error("PancakeSwap adapter not registered")
+  }
+
+  // Use V3 swap (better liquidity for most pairs)
+  const v3Path = encodeV3Path(pathIn, FEE_HIGH, pathOut) // 1% fee tier
+  const { commands, inputs } = encodeV3SwapExactIn(
+    adapterAddress, // recipient is the adapter (it measures balance change, then forwards to fund)
     amountIn,
     minAmountOut,
-    swapPath,
-    false // payerIsUser = false, contract pays
+    v3Path,
+    false // payerIsUser = false, tokens already transferred to router
   )
 
   // Encode extraData for PancakeSwapAdapter
@@ -226,13 +270,6 @@ async function main() {
 
   // Execute swap
   console.log("Executing swap...")
-  const hpPropTrading = new ethers.Contract(hpPropTradingAddress, HP_PROP_TRADING_ABI, wallet)
-
-  // Check if adapter is registered
-  const adapterAddress = await hpPropTrading.getAdapter(PANCAKE_ADAPTER_ID)
-  if (adapterAddress === ethers.ZeroAddress) {
-    throw new Error("PancakeSwap adapter not registered")
-  }
   console.log(`Adapter address: ${adapterAddress}`)
 
   // Execute via HPPropTrading.execute()

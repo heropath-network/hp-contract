@@ -108,10 +108,9 @@ contract PancakeSwapAdapter is Ownable {
             // BNB input - use msg.value
             value = msg.value;
         } else {
-            // ERC20 input - request approval from fund, then transfer
+            // ERC20 input - request approval from fund, transfer to router directly
             IHPPropTrading(authorizedCaller).requestApproval(ADAPTER_ID, tokenIn, amountIn);
-            IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-            IERC20(tokenIn).forceApprove(universalRouter, amountIn);
+            IERC20(tokenIn).safeTransferFrom(msg.sender, universalRouter, amountIn);
         }
 
         // Record balance before
@@ -137,6 +136,8 @@ contract PancakeSwapAdapter is Ownable {
 
         // Check slippage
         require(amountOut >= minAmountOut, ERR_INSUFFICIENT_OUTPUT);
+
+        // Note: it is better to add a more strong slippage control here
 
         // Transfer output to caller
         if (tokenOut == address(0)) {
