@@ -31,6 +31,9 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
     /// @notice Registered adapters using EnumerableMap for efficient enumeration
     EnumerableMap.Bytes32ToAddressMap private _adapters;
 
+    /// @notice Reserved storage gap for future upgrades
+    uint256[49] private __gap;
+
     // ============ Events ============
 
     // Fund events
