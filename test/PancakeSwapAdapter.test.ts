@@ -7,21 +7,25 @@ describe("PancakeSwapAdapter", function () {
   let hpPropTrading: HPPropTrading
   let pancakeAdapter: PancakeSwapAdapter
   let mockRouter: MockUniversalRouter
-  let mockToken: MockERC20
+  let mockTokenIn: MockERC20
+  let mockTokenOut: MockERC20
   let mockWBNB: MockERC20
   let admin: SignerWithAddress
-  let allocator: SignerWithAddress
+  let executor: SignerWithAddress
   let user: SignerWithAddress
 
   const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP"))
 
   beforeEach(async function () {
-    ;[admin, allocator, user] = await ethers.getSigners()
+    ;[admin, executor, user] = await ethers.getSigners()
 
     // Deploy mock tokens
     const MockERC20Factory = await ethers.getContractFactory("MockERC20")
-    mockToken = (await MockERC20Factory.deploy("Mock USDT", "USDT", 18)) as unknown as MockERC20
-    await mockToken.waitForDeployment()
+    mockTokenIn = (await MockERC20Factory.deploy("Mock USDT", "USDT", 18)) as unknown as MockERC20
+    await mockTokenIn.waitForDeployment()
+
+    mockTokenOut = (await MockERC20Factory.deploy("Mock BUSD", "BUSD", 18)) as unknown as MockERC20
+    await mockTokenOut.waitForDeployment()
 
     mockWBNB = (await MockERC20Factory.deploy("Wrapped BNB", "WBNB", 18)) as unknown as MockERC20
     await mockWBNB.waitForDeployment()
@@ -85,8 +89,8 @@ describe("PancakeSwapAdapter", function () {
     it("should revert swap from unauthorized caller", async function () {
       await expect(
         pancakeAdapter.connect(user).swap(
-          await mockToken.getAddress(),
-          await mockWBNB.getAddress(),
+          await mockTokenIn.getAddress(),
+          await mockTokenOut.getAddress(),
           ethers.parseEther("100"),
           0,
           "0x"
@@ -111,21 +115,24 @@ describe("PancakeSwapAdapter", function () {
       // Register PancakeSwapAdapter
       await hpPropTrading.connect(admin).registerAdapter(PANCAKE_ADAPTER_ID, await pancakeAdapter.getAddress())
 
-      // Grant allocator role
-      const ALLOCATOR_ROLE = await hpPropTrading.ALLOCATOR_ROLE()
-      await hpPropTrading.connect(admin).grantRole(ALLOCATOR_ROLE, allocator.address)
+      // Grant executor role
+      const EXECUTOR_ROLE = await hpPropTrading.EXECUTOR_ROLE()
+      await hpPropTrading.connect(admin).grantRole(EXECUTOR_ROLE, executor.address)
 
       // Deposit ERC20 funds to HPPropTrading
       const amount = ethers.parseEther("1000")
-      await mockToken.mint(user.address, amount)
-      await mockToken.connect(user).approve(await hpPropTrading.getAddress(), amount)
-      await hpPropTrading.connect(user).depositToken(await mockToken.getAddress(), amount)
+      await mockTokenIn.mint(user.address, amount)
+      await mockTokenIn.connect(user).approve(await hpPropTrading.getAddress(), amount)
+      await hpPropTrading.connect(user).depositToken(await mockTokenIn.getAddress(), amount)
 
       // Pre-fund mock router with output tokens for swap simulation
-      await mockWBNB.mint(await mockRouter.getAddress(), ethers.parseEther("1000"))
+      await mockTokenOut.mint(await mockRouter.getAddress(), ethers.parseEther("1000"))
+
+      // Approve adapter to spend HPPropTrading's tokens
+      await hpPropTrading.connect(admin).approveForAdapter(PANCAKE_ADAPTER_ID, await mockTokenIn.getAddress(), ethers.parseEther("1000"))
     })
 
-    it("should allow ALLOCATOR to execute swap via PancakeSwapAdapter", async function () {
+    it("should allow EXECUTOR to execute swap via PancakeSwapAdapter", async function () {
       const amountIn = ethers.parseEther("100")
       const minAmountOut = ethers.parseEther("90")
       const deadline = Math.floor(Date.now() / 1000) + 3600
@@ -133,7 +140,7 @@ describe("PancakeSwapAdapter", function () {
       // Encode extraData for Universal Router
       // V2_SWAP_EXACT_IN command (0x08)
       const commands = "0x08"
-      const path = [await mockToken.getAddress(), await mockWBNB.getAddress()]
+      const path = [await mockTokenIn.getAddress(), await mockTokenOut.getAddress()]
       const inputs = [
         ethers.AbiCoder.defaultAbiCoder().encode(
           ["address", "uint256", "uint256", "address[]", "bool"],
@@ -145,19 +152,29 @@ describe("PancakeSwapAdapter", function () {
         [commands, inputs, deadline]
       )
 
-      // Execute swap
-      await hpPropTrading
-        .connect(allocator)
-        .executeSwap(PANCAKE_ADAPTER_ID, await mockToken.getAddress(), await mockWBNB.getAddress(), amountIn, minAmountOut, extraData)
+      // Encode swap function call for adapter
+      const swapCalldata = pancakeAdapter.interface.encodeFunctionData("swap", [
+        await mockTokenIn.getAddress(),
+        await mockTokenOut.getAddress(),
+        amountIn,
+        minAmountOut,
+        extraData,
+      ])
+
+      // Execute via HPPropTrading.execute()
+      await hpPropTrading.connect(executor).execute(PANCAKE_ADAPTER_ID, swapCalldata)
     })
 
-    it("should revert swap for non-ALLOCATOR", async function () {
-      const amountIn = ethers.parseEther("100")
-      const extraData = "0x"
+    it("should revert execute for non-EXECUTOR", async function () {
+      const swapCalldata = pancakeAdapter.interface.encodeFunctionData("swap", [
+        await mockTokenIn.getAddress(),
+        await mockTokenOut.getAddress(),
+        ethers.parseEther("100"),
+        0,
+        "0x",
+      ])
       await expect(
-        hpPropTrading
-          .connect(user)
-          .executeSwap(PANCAKE_ADAPTER_ID, await mockToken.getAddress(), ethers.ZeroAddress, amountIn, 0, extraData)
+        hpPropTrading.connect(user).execute(PANCAKE_ADAPTER_ID, swapCalldata)
       ).to.be.reverted
     })
   })

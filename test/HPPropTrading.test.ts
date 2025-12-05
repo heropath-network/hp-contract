@@ -8,13 +8,13 @@ describe("HPPropTrading", function () {
   let mockToken: MockERC20
   let admin: SignerWithAddress
   let dao: SignerWithAddress
-  let allocator: SignerWithAddress
+  let executor: SignerWithAddress
   let user: SignerWithAddress
 
   const MOCK_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("MOCK_ADAPTER"))
 
   beforeEach(async function () {
-    ;[admin, dao, allocator, user] = await ethers.getSigners()
+    ;[admin, dao, executor, user] = await ethers.getSigners()
 
     // Deploy mock token
     const MockERC20Factory = await ethers.getContractFactory("MockERC20")
@@ -34,11 +34,11 @@ describe("HPPropTrading", function () {
     it("should set admin with all roles", async function () {
       const DEFAULT_ADMIN_ROLE = await hpPropTrading.DEFAULT_ADMIN_ROLE()
       const HP_DAO_ROLE = await hpPropTrading.HP_DAO_ROLE()
-      const ALLOCATOR_ROLE = await hpPropTrading.ALLOCATOR_ROLE()
+      const EXECUTOR_ROLE = await hpPropTrading.EXECUTOR_ROLE()
 
       expect(await hpPropTrading.hasRole(DEFAULT_ADMIN_ROLE, admin.address)).to.be.true
       expect(await hpPropTrading.hasRole(HP_DAO_ROLE, admin.address)).to.be.true
-      expect(await hpPropTrading.hasRole(ALLOCATOR_ROLE, admin.address)).to.be.true
+      expect(await hpPropTrading.hasRole(EXECUTOR_ROLE, admin.address)).to.be.true
     })
 
     it("should not allow re-initialization", async function () {
@@ -53,10 +53,10 @@ describe("HPPropTrading", function () {
       expect(await hpPropTrading.hasRole(HP_DAO_ROLE, dao.address)).to.be.true
     })
 
-    it("should allow admin to grant ALLOCATOR_ROLE", async function () {
-      const ALLOCATOR_ROLE = await hpPropTrading.ALLOCATOR_ROLE()
-      await hpPropTrading.connect(admin).grantRole(ALLOCATOR_ROLE, allocator.address)
-      expect(await hpPropTrading.hasRole(ALLOCATOR_ROLE, allocator.address)).to.be.true
+    it("should allow admin to grant EXECUTOR_ROLE", async function () {
+      const EXECUTOR_ROLE = await hpPropTrading.EXECUTOR_ROLE()
+      await hpPropTrading.connect(admin).grantRole(EXECUTOR_ROLE, executor.address)
+      expect(await hpPropTrading.hasRole(EXECUTOR_ROLE, executor.address)).to.be.true
     })
   })
 
@@ -156,21 +156,17 @@ describe("HPPropTrading", function () {
       expect(ids).to.include(adapterId2)
     })
 
-    it("should revert executeSwap if adapter not found", async function () {
+    it("should revert execute if adapter not found", async function () {
       const fakeAdapterId = ethers.keccak256(ethers.toUtf8Bytes("FAKE"))
       await expect(
-        hpPropTrading
-          .connect(admin)
-          .executeSwap(fakeAdapterId, await mockToken.getAddress(), ethers.ZeroAddress, 100, 0, "0x")
+        hpPropTrading.connect(admin).execute(fakeAdapterId, "0x")
       ).to.be.revertedWith("Adapter not found")
     })
 
-    it("should revert executeSwap for non-ALLOCATOR", async function () {
+    it("should revert execute for non-EXECUTOR", async function () {
       await hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
       await expect(
-        hpPropTrading
-          .connect(user)
-          .executeSwap(MOCK_ADAPTER_ID, await mockToken.getAddress(), ethers.ZeroAddress, 100, 0, "0x")
+        hpPropTrading.connect(user).execute(MOCK_ADAPTER_ID, "0x")
       ).to.be.reverted
     })
   })

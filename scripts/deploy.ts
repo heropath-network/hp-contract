@@ -76,11 +76,11 @@ async function main() {
   console.log("\n4. Verifying roles...")
   const DEFAULT_ADMIN_ROLE = await hpPropTrading.DEFAULT_ADMIN_ROLE()
   const HP_DAO_ROLE = await hpPropTrading.HP_DAO_ROLE()
-  const ALLOCATOR_ROLE = await hpPropTrading.ALLOCATOR_ROLE()
+  const EXECUTOR_ROLE = await hpPropTrading.EXECUTOR_ROLE()
 
   console.log("   DEFAULT_ADMIN_ROLE:", await hpPropTrading.hasRole(DEFAULT_ADMIN_ROLE, deployer.address))
   console.log("   HP_DAO_ROLE:", await hpPropTrading.hasRole(HP_DAO_ROLE, deployer.address))
-  console.log("   ALLOCATOR_ROLE:", await hpPropTrading.hasRole(ALLOCATOR_ROLE, deployer.address))
+  console.log("   EXECUTOR_ROLE:", await hpPropTrading.hasRole(EXECUTOR_ROLE, deployer.address))
 
   // 5. Save deployment info
   const chainId = Number((await ethers.provider.getNetwork()).chainId)

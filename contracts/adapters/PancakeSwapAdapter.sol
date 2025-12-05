@@ -4,7 +4,6 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "../interfaces/IAdapter.sol";
 import "../interfaces/IPancakeUniversalRouter.sol";
 
 /**
@@ -18,7 +17,7 @@ import "../interfaces/IPancakeUniversalRouter.sol";
  * - 0x01: V3_SWAP_EXACT_OUT
  * - 0x09: V2_SWAP_EXACT_OUT
  */
-contract PancakeSwapAdapter is IAdapter, Ownable {
+contract PancakeSwapAdapter is Ownable {
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -95,7 +94,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         uint256 amountIn,
         uint256 minAmountOut,
         bytes calldata extraData
-    ) external payable override onlyAuthorized returns (uint256 amountOut) {
+    ) external payable onlyAuthorized returns (uint256 amountOut) {
         // Decode extraData
         (bytes memory commands, bytes[] memory inputs, uint256 deadline) = abi.decode(
             extraData,

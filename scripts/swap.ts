@@ -21,13 +21,14 @@ const TOKENS: Record<string, string> = {
   USDT: "0x55d398326f99059fF775485246999027B3197955",
   USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
   BUSD: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+  PALU: "0x02e75d28A8AA2a0033b8cf866fCf0bB0E1eE4444",
 }
 
 const PANCAKE_UNIVERSAL_ROUTER = "0xd9C500DfF816a1Da21A48A732d3498Bf09dc9AEB"
 const PANCAKE_V2_ROUTER = "0x10ED43C718714eb63d5aA57B78B54704E256024E"
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
 
-const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP_V2"))
+const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP"))
 
 // Universal Router command codes
 const COMMAND_V2_SWAP_EXACT_IN = 0x08
@@ -35,8 +36,14 @@ const COMMAND_V3_SWAP_EXACT_IN = 0x00
 
 // ABIs
 const HP_PROP_TRADING_ABI = [
-  "function executeSwap(bytes32 adapterId, address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, bytes extraData) returns (uint256)",
+  "function execute(bytes32 adapterId, bytes data) payable returns (bytes)",
+  "function approveForAdapter(bytes32 adapterId, address token, uint256 amount)",
   "function getBalance(address token) view returns (uint256)",
+  "function getAdapter(bytes32 adapterId) view returns (address)",
+]
+
+const PANCAKE_ADAPTER_ABI = [
+  "function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut, bytes extraData) payable returns (uint256)",
 ]
 
 const V2_ROUTER_ABI = ["function getAmountsOut(uint amountIn, address[] path) view returns (uint[] amounts)"]
@@ -194,6 +201,18 @@ async function main() {
 
   console.log("Encoded extraData:", extraData.substring(0, 100) + "...\n")
 
+  // Encode swap function call for adapter
+  const adapterInterface = new ethers.Interface(PANCAKE_ADAPTER_ABI)
+  const swapCalldata = adapterInterface.encodeFunctionData("swap", [
+    tokenIn,
+    tokenOut,
+    amountIn,
+    minAmountOut,
+    extraData,
+  ])
+
+  console.log("Encoded swap calldata:", swapCalldata.substring(0, 100) + "...\n")
+
   if (opts.dryRun) {
     console.log("=== DRY RUN - No transaction sent ===\n")
     console.log("Transaction parameters:")
@@ -209,7 +228,15 @@ async function main() {
   console.log("Executing swap...")
   const hpPropTrading = new ethers.Contract(hpPropTradingAddress, HP_PROP_TRADING_ABI, wallet)
 
-  const tx = await hpPropTrading.executeSwap(PANCAKE_ADAPTER_ID, tokenIn, tokenOut, amountIn, minAmountOut, extraData)
+  // Check if adapter is registered
+  const adapterAddress = await hpPropTrading.getAdapter(PANCAKE_ADAPTER_ID)
+  if (adapterAddress === ethers.ZeroAddress) {
+    throw new Error("PancakeSwap adapter not registered")
+  }
+  console.log(`Adapter address: ${adapterAddress}`)
+
+  // Execute via HPPropTrading.execute()
+  const tx = await hpPropTrading.execute(PANCAKE_ADAPTER_ID, swapCalldata)
 
   console.log(`Transaction sent: ${tx.hash}`)
   console.log("Waiting for confirmation...\n")

@@ -7,7 +7,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
-import "./interfaces/IAdapter.sol";
 
 /**
  * @title HPPropTrading
@@ -24,7 +23,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
 
     // ============ Roles ============
     bytes32 public constant HP_DAO_ROLE = keccak256("HP_DAO_ROLE");
-    bytes32 public constant ALLOCATOR_ROLE = keccak256("ALLOCATOR_ROLE");
+    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
 
     // ============ State Variables ============
 
@@ -40,13 +39,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
     // Aggregator events
     event AdapterRegistered(bytes32 indexed adapterId, address indexed adapter);
     event AdapterRemoved(bytes32 indexed adapterId);
-    event SwapExecuted(
-        bytes32 indexed adapterId,
-        address indexed tokenIn,
-        address indexed tokenOut,
-        uint256 amountIn,
-        uint256 amountOut
-    );
+    event AdapterExecuted(bytes32 indexed adapterId, bytes data);
 
     // ============ Errors ============
 
@@ -55,6 +48,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
     string private constant ERR_TRANSFER_FAILED = "Transfer failed";
     string private constant ERR_ADAPTER_EXISTS = "Adapter already exists";
     string private constant ERR_ADAPTER_NOT_FOUND = "Adapter not found";
+    string private constant ERR_ADAPTER_CALL_FAILED = "Adapter call failed";
 
     // ============ Initializer ============
 
@@ -68,7 +62,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(HP_DAO_ROLE, msg.sender);
-        _grantRole(ALLOCATOR_ROLE, msg.sender);
+        _grantRole(EXECUTOR_ROLE, msg.sender);
     }
 
     // ============ Fund Module ============
@@ -148,41 +142,55 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
     }
 
     /**
-     * @notice Execute a swap through an adapter (ALLOCATOR only)
-     * @param adapterId Adapter to use
-     * @param tokenIn Input token address (address(0) for BNB)
-     * @param tokenOut Output token address (address(0) for BNB)
-     * @param amountIn Amount of input tokens
-     * @param minAmountOut Minimum acceptable output (slippage protection)
-     * @param extraData Protocol-specific data (swap path, deadline, etc.)
-     * @return amountOut Actual output amount
+     * @notice Execute arbitrary call to an adapter (ALLOCATOR only)
+     * @param adapterId Adapter to call
+     * @param data Encoded function call data
+     * @return result Return data from adapter call
      */
-    function executeSwap(
+    function execute(
         bytes32 adapterId,
-        address tokenIn,
-        address tokenOut,
-        uint256 amountIn,
-        uint256 minAmountOut,
-        bytes calldata extraData
-    ) external onlyRole(ALLOCATOR_ROLE) nonReentrant returns (uint256 amountOut) {
+        bytes calldata data
+    ) external payable onlyRole(EXECUTOR_ROLE) nonReentrant returns (bytes memory result) {
         (bool exists, address adapter) = _adapters.tryGet(adapterId);
         require(exists, ERR_ADAPTER_NOT_FOUND);
 
-        uint256 value = 0;
+        bool success;
+        (success, result) = adapter.call{value: msg.value}(data);
+        require(success, _getRevertMsg(result));
 
-        if (tokenIn == address(0)) {
-            // Sending BNB
-            require(address(this).balance >= amountIn, ERR_INSUFFICIENT_BALANCE);
-            value = amountIn;
-        } else {
-            // Approve adapter to spend tokens
-            IERC20(tokenIn).forceApprove(adapter, amountIn);
+        emit AdapterExecuted(adapterId, data);
+    }
+
+    /**
+     * @notice Approve token for adapter to spend (ALLOCATOR only)
+     * @param adapterId Adapter to approve
+     * @param token Token to approve
+     * @param amount Amount to approve
+     */
+    function approveForAdapter(
+        bytes32 adapterId,
+        address token,
+        uint256 amount
+    ) external onlyRole(EXECUTOR_ROLE) {
+        (bool exists, address adapter) = _adapters.tryGet(adapterId);
+        require(exists, ERR_ADAPTER_NOT_FOUND);
+        require(token != address(0), ERR_INVALID_ADDRESS);
+        IERC20(token).forceApprove(adapter, amount);
+    }
+
+    /**
+     * @notice Parse revert message from failed call
+     * @param returnData Return data from failed call
+     * @return Revert message string
+     */
+    function _getRevertMsg(bytes memory returnData) internal pure returns (string memory) {
+        if (returnData.length < 68) {
+            return ERR_ADAPTER_CALL_FAILED;
         }
-
-        // Execute swap
-        amountOut = IAdapter(adapter).swap{ value: value }(tokenIn, tokenOut, amountIn, minAmountOut, extraData);
-
-        emit SwapExecuted(adapterId, tokenIn, tokenOut, amountIn, amountOut);
+        assembly {
+            returnData := add(returnData, 0x04)
+        }
+        return abi.decode(returnData, (string));
     }
 
     /**
