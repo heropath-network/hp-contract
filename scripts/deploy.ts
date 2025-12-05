@@ -1,0 +1,109 @@
+import { ethers, upgrades, network } from "hardhat";
+import * as fs from "fs";
+import * as path from "path";
+
+const PANCAKE_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("PANCAKESWAP_V2"));
+
+interface DeploymentInfo {
+  network: string;
+  chainId: number;
+  deployedAt: string;
+  contracts: {
+    HPPropTrading_Proxy: string;
+    HPPropTrading_Implementation: string;
+    ProxyAdmin: string;
+    PancakeSwapAdapter: string;
+  };
+}
+
+async function main() {
+  const [deployer] = await ethers.getSigners();
+  console.log("Deploying contracts with account:", deployer.address);
+  console.log("Account balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)));
+  console.log("Network:", network.name, "ChainId:", (await ethers.provider.getNetwork()).chainId);
+
+  // 1. Deploy PancakeSwapAdapter
+  console.log("\n1. Deploying PancakeSwapAdapter...");
+  const PancakeSwapAdapter = await ethers.getContractFactory("PancakeSwapAdapter");
+  const pancakeAdapter = await PancakeSwapAdapter.deploy();
+  await pancakeAdapter.waitForDeployment();
+  const pancakeAdapterAddress = await pancakeAdapter.getAddress();
+  console.log("   PancakeSwapAdapter deployed to:", pancakeAdapterAddress);
+
+  // 2. Deploy HPPropTrading with Transparent Proxy
+  console.log("\n2. Deploying HPPropTrading (Transparent Proxy)...");
+  const HPPropTrading = await ethers.getContractFactory("HPPropTrading");
+  const hpPropTrading = await upgrades.deployProxy(
+    HPPropTrading,
+    [deployer.address], // initialize(admin)
+    {
+      initializer: "initialize",
+      kind: "transparent",
+    }
+  );
+  await hpPropTrading.waitForDeployment();
+  const proxyAddress = await hpPropTrading.getAddress();
+  console.log("   HPPropTrading Proxy deployed to:", proxyAddress);
+
+  // Get implementation and ProxyAdmin addresses
+  const implementationAddress = await upgrades.erc1967.getImplementationAddress(proxyAddress);
+  const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(proxyAddress);
+  console.log("   Implementation address:", implementationAddress);
+  console.log("   ProxyAdmin address:", proxyAdminAddress);
+
+  // 3. Register PancakeSwapAdapter
+  console.log("\n3. Registering PancakeSwapAdapter...");
+  const tx = await hpPropTrading.registerAdapter(PANCAKE_ADAPTER_ID, pancakeAdapterAddress);
+  await tx.wait();
+  console.log("   PancakeSwapAdapter registered with ID:", PANCAKE_ADAPTER_ID);
+
+  // 4. Verify roles
+  console.log("\n4. Verifying roles...");
+  const DEFAULT_ADMIN_ROLE = await hpPropTrading.DEFAULT_ADMIN_ROLE();
+  const HP_DAO_ROLE = await hpPropTrading.HP_DAO_ROLE();
+  const ALLOCATOR_ROLE = await hpPropTrading.ALLOCATOR_ROLE();
+
+  console.log("   DEFAULT_ADMIN_ROLE:", await hpPropTrading.hasRole(DEFAULT_ADMIN_ROLE, deployer.address));
+  console.log("   HP_DAO_ROLE:", await hpPropTrading.hasRole(HP_DAO_ROLE, deployer.address));
+  console.log("   ALLOCATOR_ROLE:", await hpPropTrading.hasRole(ALLOCATOR_ROLE, deployer.address));
+
+  // 5. Save deployment info
+  const chainId = Number((await ethers.provider.getNetwork()).chainId);
+  const deploymentInfo: DeploymentInfo = {
+    network: network.name,
+    chainId,
+    deployedAt: new Date().toISOString(),
+    contracts: {
+      HPPropTrading_Proxy: proxyAddress,
+      HPPropTrading_Implementation: implementationAddress,
+      ProxyAdmin: proxyAdminAddress,
+      PancakeSwapAdapter: pancakeAdapterAddress,
+    },
+  };
+
+  const deploymentsDir = path.join(__dirname, "..", "deployments");
+  if (!fs.existsSync(deploymentsDir)) {
+    fs.mkdirSync(deploymentsDir, { recursive: true });
+  }
+
+  const filename = `${network.name}.json`;
+  const filepath = path.join(deploymentsDir, filename);
+  fs.writeFileSync(filepath, JSON.stringify(deploymentInfo, null, 2));
+  console.log("\n5. Deployment info saved to:", filepath);
+
+  // Summary
+  console.log("\n========== Deployment Summary ==========");
+  console.log("HPPropTrading Proxy:", proxyAddress);
+  console.log("HPPropTrading Implementation:", implementationAddress);
+  console.log("ProxyAdmin:", proxyAdminAddress);
+  console.log("PancakeSwapAdapter:", pancakeAdapterAddress);
+  console.log("PancakeSwap Adapter ID:", PANCAKE_ADAPTER_ID);
+  console.log("=========================================\n");
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
