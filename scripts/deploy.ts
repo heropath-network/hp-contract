@@ -46,7 +46,7 @@ async function main() {
   const HPPropTrading = await ethers.getContractFactory("HPPropTrading")
   const hpPropTrading = await upgrades.deployProxy(
     HPPropTrading,
-    [deployer.address], // initialize(admin)
+    [], // initialize() uses msg.sender
     {
       initializer: "initialize",
       kind: "transparent",

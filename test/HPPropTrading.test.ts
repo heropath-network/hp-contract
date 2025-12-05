@@ -27,9 +27,9 @@ describe("HPPropTrading", function () {
     mockAdapter = (await MockAdapterFactory.deploy()) as unknown as MockAdapter
     await mockAdapter.waitForDeployment()
 
-    // Deploy HPPropTrading with proxy
-    const HPPropTradingFactory = await ethers.getContractFactory("HPPropTrading")
-    hpPropTrading = (await upgrades.deployProxy(HPPropTradingFactory, [admin.address], {
+    // Deploy HPPropTrading with proxy (as admin)
+    const HPPropTradingFactory = await ethers.getContractFactory("HPPropTrading", admin)
+    hpPropTrading = (await upgrades.deployProxy(HPPropTradingFactory, [], {
       initializer: "initialize",
       kind: "transparent",
     })) as unknown as HPPropTrading
@@ -47,14 +47,8 @@ describe("HPPropTrading", function () {
       expect(await hpPropTrading.hasRole(ALLOCATOR_ROLE, admin.address)).to.be.true
     })
 
-    it("should revert if initialized with zero address", async function () {
-      const HPPropTradingFactory = await ethers.getContractFactory("HPPropTrading")
-      await expect(
-        upgrades.deployProxy(HPPropTradingFactory, [ethers.ZeroAddress], {
-          initializer: "initialize",
-          kind: "transparent",
-        })
-      ).to.be.revertedWithCustomError(hpPropTrading, "InvalidAddress")
+    it("should not allow re-initialization", async function () {
+      await expect(hpPropTrading.initialize()).to.be.reverted
     })
   })
 

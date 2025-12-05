@@ -24,7 +24,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
     // ============ Immutables ============
 
     /// @notice Universal Router address
-    /// @see https://developer.pancakeswap.finance/contracts/universal-router/addresses
+    /// @dev https://developer.pancakeswap.finance/contracts/universal-router/addresses
     address public immutable universalRouter;
 
     /// @notice WBNB address

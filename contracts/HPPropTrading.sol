@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./interfaces/IAdapter.sol";
 
 /**
@@ -19,6 +20,7 @@ import "./interfaces/IAdapter.sol";
  */
 contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
+    using EnumerableMap for EnumerableMap.Bytes32ToAddressMap;
 
     // ============ Roles ============
     bytes32 public constant HP_DAO_ROLE = keccak256("HP_DAO_ROLE");
@@ -26,11 +28,8 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
 
     // ============ State Variables ============
 
-    /// @notice Registered adapters: adapterId => adapter address
-    mapping(bytes32 => address) public adapters;
-
-    /// @notice List of registered adapter IDs
-    bytes32[] public adapterIds;
+    /// @notice Registered adapters using EnumerableMap for efficient enumeration
+    EnumerableMap.Bytes32ToAddressMap private _adapters;
 
     // ============ Events ============
 
@@ -61,17 +60,15 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
 
     /**
      * @notice Initialize the contract
-     * @param admin Address to receive DEFAULT_ADMIN_ROLE, HP_DAO_ROLE, and ALLOCATOR_ROLE
+     * @dev Grants all roles to msg.sender
      */
-    function initialize(address admin) public initializer {
-        if (admin == address(0)) revert InvalidAddress();
-
+    function initialize() public initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(HP_DAO_ROLE, admin);
-        _grantRole(ALLOCATOR_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(HP_DAO_ROLE, msg.sender);
+        _grantRole(ALLOCATOR_ROLE, msg.sender);
     }
 
     // ============ Fund Module ============
@@ -137,10 +134,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
      */
     function registerAdapter(bytes32 adapterId, address adapter) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (adapter == address(0)) revert InvalidAddress();
-        if (adapters[adapterId] != address(0)) revert AdapterAlreadyExists(adapterId);
-
-        adapters[adapterId] = adapter;
-        adapterIds.push(adapterId);
+        if (!_adapters.set(adapterId, adapter)) revert AdapterAlreadyExists(adapterId);
 
         emit AdapterRegistered(adapterId, adapter);
     }
@@ -150,18 +144,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
      * @param adapterId Adapter identifier to remove
      */
     function removeAdapter(bytes32 adapterId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (adapters[adapterId] == address(0)) revert AdapterNotFound(adapterId);
-
-        delete adapters[adapterId];
-
-        // Remove from array
-        for (uint256 i = 0; i < adapterIds.length; i++) {
-            if (adapterIds[i] == adapterId) {
-                adapterIds[i] = adapterIds[adapterIds.length - 1];
-                adapterIds.pop();
-                break;
-            }
-        }
+        if (!_adapters.remove(adapterId)) revert AdapterNotFound(adapterId);
 
         emit AdapterRemoved(adapterId);
     }
@@ -184,8 +167,8 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
         uint256 minAmountOut,
         bytes calldata extraData
     ) external onlyRole(ALLOCATOR_ROLE) nonReentrant returns (uint256 amountOut) {
-        address adapter = adapters[adapterId];
-        if (adapter == address(0)) revert AdapterNotFound(adapterId);
+        (bool exists, address adapter) = _adapters.tryGet(adapterId);
+        if (!exists) revert AdapterNotFound(adapterId);
 
         uint256 value = 0;
 
@@ -205,20 +188,48 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
     }
 
     /**
+     * @notice Get number of registered adapters
+     * @return Number of adapters
+     */
+    function getAdapterCount() external view returns (uint256) {
+        return _adapters.length();
+    }
+
+    /**
+     * @notice Get adapter at index
+     * @param index Index in the adapter list
+     * @return adapterId Adapter identifier
+     * @return adapter Adapter address
+     */
+    function getAdapterAt(uint256 index) external view returns (bytes32 adapterId, address adapter) {
+        return _adapters.at(index);
+    }
+
+    /**
      * @notice Get all registered adapter IDs
      * @return Array of adapter IDs
      */
     function getAdapterIds() external view returns (bytes32[] memory) {
-        return adapterIds;
+        return _adapters.keys();
     }
 
     /**
      * @notice Get adapter address by ID
      * @param adapterId Adapter identifier
-     * @return Adapter address
+     * @return Adapter address (returns address(0) if not found)
      */
     function getAdapter(bytes32 adapterId) external view returns (address) {
-        return adapters[adapterId];
+        (bool exists, address adapter) = _adapters.tryGet(adapterId);
+        return exists ? adapter : address(0);
+    }
+
+    /**
+     * @notice Check if adapter exists
+     * @param adapterId Adapter identifier
+     * @return True if adapter exists
+     */
+    function hasAdapter(bytes32 adapterId) external view returns (bool) {
+        return _adapters.contains(adapterId);
     }
 
     // ============ Receive ============
