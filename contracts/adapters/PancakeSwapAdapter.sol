@@ -21,32 +21,38 @@ import "../interfaces/IUniversalRouter.sol";
 contract PancakeSwapAdapter is IAdapter, Ownable {
     using SafeERC20 for IERC20;
 
-    // ============ Constants ============
+    // ============ Immutables ============
 
-    /// @notice PancakeSwap Universal Router 2 on BSC
-    address public constant UNIVERSAL_ROUTER = 0xd9C500DfF816a1Da21A48A732d3498Bf09dc9AEB;
+    /// @notice Universal Router address
+    /// @see https://developer.pancakeswap.finance/contracts/universal-router/addresses
+    address public immutable universalRouter;
 
-    /// @notice WBNB address on BSC
-    address public constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
+    /// @notice WBNB address
+    address public immutable wbnb;
 
     // ============ Events ============
 
-    event SwapExecuted(
-        address indexed tokenIn,
-        address indexed tokenOut,
-        uint256 amountIn,
-        uint256 amountOut
-    );
+    event SwapExecuted(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
 
     // ============ Errors ============
 
+    error InvalidAddress();
     error InvalidPath();
     error SwapFailed();
     error InsufficientOutput();
 
     // ============ Constructor ============
 
-    constructor() Ownable(msg.sender) {}
+    /**
+     * @notice Constructor
+     * @param _universalRouter PancakeSwap Universal Router address
+     * @param _wbnb WBNB token address
+     */
+    constructor(address _universalRouter, address _wbnb) Ownable(msg.sender) {
+        if (_universalRouter == address(0) || _wbnb == address(0)) revert InvalidAddress();
+        universalRouter = _universalRouter;
+        wbnb = _wbnb;
+    }
 
     // ============ Main Functions ============
 
@@ -84,7 +90,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         } else {
             // ERC20 input - transfer from caller and approve router
             IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
-            IERC20(tokenIn).forceApprove(UNIVERSAL_ROUTER, amountIn);
+            IERC20(tokenIn).forceApprove(universalRouter, amountIn);
         }
 
         // Record balance before
@@ -96,11 +102,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         }
 
         // Execute swap
-        IUniversalRouter(UNIVERSAL_ROUTER).execute{value: value}(
-            commands,
-            inputs,
-            deadline
-        );
+        IUniversalRouter(universalRouter).execute{ value: value }(commands, inputs, deadline);
 
         // Calculate output
         uint256 balanceAfter;
@@ -117,7 +119,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
 
         // Transfer output to caller
         if (tokenOut == address(0)) {
-            (bool success, ) = msg.sender.call{value: amountOut}("");
+            (bool success, ) = msg.sender.call{ value: amountOut }("");
             if (!success) revert SwapFailed();
         } else {
             IERC20(tokenOut).safeTransfer(msg.sender, amountOut);
@@ -132,13 +134,9 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
      * @param to Recipient
      * @param amount Amount to rescue
      */
-    function rescue(
-        address token,
-        address to,
-        uint256 amount
-    ) external onlyOwner {
+    function rescue(address token, address to, uint256 amount) external onlyOwner {
         if (token == address(0)) {
-            (bool success, ) = to.call{value: amount}("");
+            (bool success, ) = to.call{ value: amount }("");
             require(success, "BNB transfer failed");
         } else {
             IERC20(token).safeTransfer(to, amount);

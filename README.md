@@ -1,1 +1,1 @@
-# hp-contract
+# HeroPath Contracts

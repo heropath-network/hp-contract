@@ -14,14 +14,10 @@ import "./interfaces/IAdapter.sol";
  * @dev Upgradeable contract using OpenZeppelin's Transparent Proxy pattern
  *
  * Modules:
- * - Fund: Manages DAO funds (BNB/USDT), only HP_DAO_ROLE can withdraw
+ * - Fund: Manages DAO funds (BNB/USDT/etc.), only HP_DAO_ROLE can withdraw
  * - Aggregator: Manages trading adapters, only ALLOCATOR_ROLE can execute trades
  */
-contract HPPropTrading is
-    Initializable,
-    AccessControlUpgradeable,
-    ReentrancyGuardUpgradeable
-{
+contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20 for IERC20;
 
     // ============ Roles ============
@@ -104,17 +100,13 @@ contract HPPropTrading is
      * @param amount Amount to withdraw
      * @param to Recipient address
      */
-    function withdraw(
-        address token,
-        uint256 amount,
-        address to
-    ) external onlyRole(HP_DAO_ROLE) nonReentrant {
+    function withdraw(address token, uint256 amount, address to) external onlyRole(HP_DAO_ROLE) nonReentrant {
         if (to == address(0)) revert InvalidAddress();
 
         if (token == address(0)) {
             // Withdraw BNB
             if (address(this).balance < amount) revert InsufficientBalance();
-            (bool success, ) = to.call{value: amount}("");
+            (bool success, ) = to.call{ value: amount }("");
             if (!success) revert SwapFailed();
         } else {
             // Withdraw ERC20
@@ -143,10 +135,7 @@ contract HPPropTrading is
      * @param adapterId Unique identifier for the adapter
      * @param adapter Adapter contract address
      */
-    function registerAdapter(
-        bytes32 adapterId,
-        address adapter
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function registerAdapter(bytes32 adapterId, address adapter) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (adapter == address(0)) revert InvalidAddress();
         if (adapters[adapterId] != address(0)) revert AdapterAlreadyExists(adapterId);
 
@@ -160,9 +149,7 @@ contract HPPropTrading is
      * @notice Remove an adapter
      * @param adapterId Adapter identifier to remove
      */
-    function removeAdapter(
-        bytes32 adapterId
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function removeAdapter(bytes32 adapterId) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (adapters[adapterId] == address(0)) revert AdapterNotFound(adapterId);
 
         delete adapters[adapterId];
@@ -212,13 +199,7 @@ contract HPPropTrading is
         }
 
         // Execute swap
-        amountOut = IAdapter(adapter).swap{value: value}(
-            tokenIn,
-            tokenOut,
-            amountIn,
-            minAmountOut,
-            extraData
-        );
+        amountOut = IAdapter(adapter).swap{ value: value }(tokenIn, tokenOut, amountIn, minAmountOut, extraData);
 
         emit SwapExecuted(adapterId, tokenIn, tokenOut, amountIn, amountOut);
     }

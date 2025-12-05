@@ -12,17 +12,10 @@ interface IUniversalRouter {
      * @param inputs Array of encoded inputs for each command
      * @param deadline Unix timestamp after which the transaction will revert
      */
-    function execute(
-        bytes calldata commands,
-        bytes[] calldata inputs,
-        uint256 deadline
-    ) external payable;
+    function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline) external payable;
 
     /**
      * @notice Execute commands without deadline
      */
-    function execute(
-        bytes calldata commands,
-        bytes[] calldata inputs
-    ) external payable;
+    function execute(bytes calldata commands, bytes[] calldata inputs) external payable;
 }
