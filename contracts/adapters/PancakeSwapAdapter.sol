@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "../interfaces/IPancakeUniversalRouter.sol";
+import "../interfaces/IHPPropTrading.sol";
 
 /**
  * @title PancakeSwapAdapter
@@ -107,7 +108,8 @@ contract PancakeSwapAdapter is Ownable {
             // BNB input - use msg.value
             value = msg.value;
         } else {
-            // ERC20 input - transfer from caller and approve router
+            // ERC20 input - request approval from fund, then transfer
+            IHPPropTrading(authorizedCaller).requestApproval(ADAPTER_ID, tokenIn, amountIn);
             IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
             IERC20(tokenIn).forceApprove(universalRouter, amountIn);
         }

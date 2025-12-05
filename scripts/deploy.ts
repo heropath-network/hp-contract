@@ -67,7 +67,7 @@ async function deploy() {
     console.log("   PancakeSwapAdapter already registered")
   } else {
     console.log("   Registering PancakeSwapAdapter...")
-    const tx = await hpPropTrading.registerAdapter(adapterId, deployment.contracts.PancakeSwapAdapter!)
+    const tx = await hpPropTrading.registerAdapter(deployment.contracts.PancakeSwapAdapter!)
     await tx.wait()
     console.log("   PancakeSwapAdapter registered!")
   }

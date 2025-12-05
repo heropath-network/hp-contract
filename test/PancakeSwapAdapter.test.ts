@@ -112,8 +112,8 @@ describe("PancakeSwapAdapter", function () {
 
   describe("Swap Execution via HPPropTrading", function () {
     beforeEach(async function () {
-      // Register PancakeSwapAdapter
-      await hpPropTrading.connect(admin).registerAdapter(PANCAKE_ADAPTER_ID, await pancakeAdapter.getAddress())
+      // Register PancakeSwapAdapter (ID is read from adapter contract)
+      await hpPropTrading.connect(admin).registerAdapter(await pancakeAdapter.getAddress())
 
       // Grant executor role
       const EXECUTOR_ROLE = await hpPropTrading.EXECUTOR_ROLE()
@@ -128,8 +128,7 @@ describe("PancakeSwapAdapter", function () {
       // Pre-fund mock router with output tokens for swap simulation
       await mockTokenOut.mint(await mockRouter.getAddress(), ethers.parseEther("1000"))
 
-      // Approve adapter to spend HPPropTrading's tokens
-      await hpPropTrading.connect(admin).approveForAdapter(PANCAKE_ADAPTER_ID, await mockTokenIn.getAddress(), ethers.parseEther("1000"))
+      // Note: No manual approval needed - adapter calls requestApproval() automatically during swap
     })
 
     it("should allow EXECUTOR to execute swap via PancakeSwapAdapter", async function () {

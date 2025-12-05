@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import "./interfaces/IHPAdapter.sol";
 
 /**
  * @title HPPropTrading
@@ -49,6 +50,7 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
     string private constant ERR_ADAPTER_EXISTS = "Adapter already exists";
     string private constant ERR_ADAPTER_NOT_FOUND = "Adapter not found";
     string private constant ERR_ADAPTER_CALL_FAILED = "Adapter call failed";
+    string private constant ERR_NOT_ADAPTER = "Not a registered adapter";
 
     // ============ Initializer ============
 
@@ -123,11 +125,11 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
 
     /**
      * @notice Register a new adapter
-     * @param adapterId Unique identifier for the adapter
-     * @param adapter Adapter contract address
+     * @param adapter Adapter contract address (must implement IAdapter)
      */
-    function registerAdapter(bytes32 adapterId, address adapter) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function registerAdapter(address adapter) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(adapter != address(0), ERR_INVALID_ADDRESS);
+        bytes32 adapterId = IHPAdapter(adapter).ADAPTER_ID();
         require(_adapters.set(adapterId, adapter), ERR_ADAPTER_EXISTS);
         emit AdapterRegistered(adapterId, adapter);
     }
@@ -155,27 +157,35 @@ contract HPPropTrading is Initializable, AccessControlUpgradeable, ReentrancyGua
         require(exists, ERR_ADAPTER_NOT_FOUND);
 
         bool success;
-        (success, result) = adapter.call{value: msg.value}(data);
+        (success, result) = adapter.call{ value: msg.value }(data);
         require(success, _getRevertMsg(result));
 
         emit AdapterExecuted(adapterId, data);
     }
 
     /**
-     * @notice Approve token for adapter to spend (ALLOCATOR only)
-     * @param adapterId Adapter to approve
+     * @notice Adapter requests token approval from this contract
+     * @dev Only registered adapters can call this
+     * @param adapterId Adapter's registered ID
      * @param token Token to approve
      * @param amount Amount to approve
      */
-    function approveForAdapter(
-        bytes32 adapterId,
-        address token,
-        uint256 amount
-    ) external onlyRole(EXECUTOR_ROLE) {
-        (bool exists, address adapter) = _adapters.tryGet(adapterId);
-        require(exists, ERR_ADAPTER_NOT_FOUND);
+    function requestApproval(bytes32 adapterId, address token, uint256 amount) external {
+        _verifyAdapter(adapterId, msg.sender);
         require(token != address(0), ERR_INVALID_ADDRESS);
-        IERC20(token).forceApprove(adapter, amount);
+        // we can add daily spending limits here like this
+        // require(dailyUsed[token] + amount <= dailyLimit[token], "Daily limit exceeded");
+        IERC20(token).forceApprove(msg.sender, amount);
+    }
+
+    /**
+     * @notice Verify caller is the registered adapter for given ID
+     * @param adapterId Adapter ID to verify
+     * @param caller Address to verify
+     */
+    function _verifyAdapter(bytes32 adapterId, address caller) internal view {
+        (bool exists, address adapter) = _adapters.tryGet(adapterId);
+        require(exists && adapter == caller, ERR_NOT_ADAPTER);
     }
 
     /**

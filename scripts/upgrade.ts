@@ -67,7 +67,7 @@ async function upgradeAdapter() {
 
   // Register new adapter
   console.log("Registering new adapter...")
-  const registerTx = await hpPropTrading.registerAdapter(adapterId, newAdapterAddress)
+  const registerTx = await hpPropTrading.registerAdapter(newAdapterAddress)
   await registerTx.wait()
 
   deployment.contracts.PancakeSwapAdapter = newAdapterAddress
