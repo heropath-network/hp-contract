@@ -2,10 +2,11 @@
 pragma solidity ^0.8.24;
 
 /**
- * @title IUniversalRouter
+ * @title IPancakeUniversalRouter
  * @notice Interface for PancakeSwap Universal Router 2
+ * @dev https://developer.pancakeswap.finance/contracts/universal-router/addresses
  */
-interface IUniversalRouter {
+interface IPancakeUniversalRouter {
     /**
      * @notice Execute a sequence of commands
      * @param commands Encoded commands to execute

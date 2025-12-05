@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "../interfaces/IAdapter.sol";
-import "../interfaces/IUniversalRouter.sol";
+import "../interfaces/IPancakeUniversalRouter.sol";
 
 /**
  * @title PancakeSwapAdapter
@@ -35,15 +35,29 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
     /// @notice WBNB address
     address public immutable wbnb;
 
+    // ============ State Variables ============
+
+    /// @notice Authorized caller (HPPropTrading)
+    address public authorizedCaller;
+
     // ============ Events ============
 
     event SwapExecuted(address indexed tokenIn, address indexed tokenOut, uint256 amountIn, uint256 amountOut);
+    event AuthorizedCallerUpdated(address indexed oldCaller, address indexed newCaller);
 
     // ============ Errors ============
 
     string private constant ERR_INVALID_ADDRESS = "Invalid address";
+    string private constant ERR_UNAUTHORIZED = "Unauthorized";
     string private constant ERR_INSUFFICIENT_OUTPUT = "Insufficient output";
     string private constant ERR_TRANSFER_FAILED = "Transfer failed";
+
+    // ============ Modifiers ============
+
+    modifier onlyAuthorized() {
+        require(msg.sender == authorizedCaller, ERR_UNAUTHORIZED);
+        _;
+    }
 
     // ============ Constructor ============
 
@@ -51,11 +65,13 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
      * @notice Constructor
      * @param _universalRouter PancakeSwap Universal Router address
      * @param _wbnb WBNB token address
+     * @param _authorizedCaller Authorized caller address (HPPropTrading)
      */
-    constructor(address _universalRouter, address _wbnb) Ownable(msg.sender) {
+    constructor(address _universalRouter, address _wbnb, address _authorizedCaller) Ownable(msg.sender) {
         require(_universalRouter != address(0) && _wbnb != address(0), ERR_INVALID_ADDRESS);
         universalRouter = _universalRouter;
         wbnb = _wbnb;
+        authorizedCaller = _authorizedCaller;
     }
 
     // ============ Main Functions ============
@@ -79,7 +95,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         uint256 amountIn,
         uint256 minAmountOut,
         bytes calldata extraData
-    ) external payable override returns (uint256 amountOut) {
+    ) external payable override onlyAuthorized returns (uint256 amountOut) {
         // Decode extraData
         (bytes memory commands, bytes[] memory inputs, uint256 deadline) = abi.decode(
             extraData,
@@ -106,7 +122,7 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         }
 
         // Execute swap
-        IUniversalRouter(universalRouter).execute{ value: value }(commands, inputs, deadline);
+        IPancakeUniversalRouter(universalRouter).execute{ value: value }(commands, inputs, deadline);
 
         // Calculate output
         uint256 balanceAfter;
@@ -130,6 +146,16 @@ contract PancakeSwapAdapter is IAdapter, Ownable {
         }
 
         emit SwapExecuted(tokenIn, tokenOut, amountIn, amountOut);
+    }
+
+    /**
+     * @notice Update authorized caller (owner only)
+     * @param _authorizedCaller New authorized caller address
+     */
+    function setAuthorizedCaller(address _authorizedCaller) external onlyOwner {
+        address oldCaller = authorizedCaller;
+        authorizedCaller = _authorizedCaller;
+        emit AuthorizedCallerUpdated(oldCaller, _authorizedCaller);
     }
 
     /**

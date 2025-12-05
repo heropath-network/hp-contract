@@ -30,20 +30,8 @@ async function main() {
   console.log("Account balance:", ethers.formatEther(await ethers.provider.getBalance(deployer.address)))
   console.log("Network:", network.name, "ChainId:", (await ethers.provider.getNetwork()).chainId)
 
-  // 1. Deploy PancakeSwapAdapter
-  console.log("\n1. Deploying PancakeSwapAdapter...")
-  const wbnbAddress = network.name === "bscTestnet" ? BSC_TESTNET_WBNB : BSC_WBNB
-  console.log("   Using WBNB:", wbnbAddress)
-  console.log("   Using Universal Router:", BSC_UNIVERSAL_ROUTER)
-
-  const PancakeSwapAdapter = await ethers.getContractFactory("PancakeSwapAdapter")
-  const pancakeAdapter = await PancakeSwapAdapter.deploy(BSC_UNIVERSAL_ROUTER, wbnbAddress)
-  await pancakeAdapter.waitForDeployment()
-  const pancakeAdapterAddress = await pancakeAdapter.getAddress()
-  console.log("   PancakeSwapAdapter deployed to:", pancakeAdapterAddress)
-
-  // 2. Deploy HPPropTrading with Transparent Proxy
-  console.log("\n2. Deploying HPPropTrading (Transparent Proxy)...")
+  // 1. Deploy HPPropTrading with Transparent Proxy (first, so we have the address for adapter)
+  console.log("\n1. Deploying HPPropTrading (Transparent Proxy)...")
   const HPPropTrading = await ethers.getContractFactory("HPPropTrading")
   const hpPropTrading = await upgrades.deployProxy(
     HPPropTrading,
@@ -62,6 +50,19 @@ async function main() {
   const proxyAdminAddress = await upgrades.erc1967.getAdminAddress(proxyAddress)
   console.log("   Implementation address:", implementationAddress)
   console.log("   ProxyAdmin address:", proxyAdminAddress)
+
+  // 2. Deploy PancakeSwapAdapter (with HPPropTrading as authorized caller)
+  console.log("\n2. Deploying PancakeSwapAdapter...")
+  const wbnbAddress = network.name === "bscTestnet" ? BSC_TESTNET_WBNB : BSC_WBNB
+  console.log("   Using WBNB:", wbnbAddress)
+  console.log("   Using Universal Router:", BSC_UNIVERSAL_ROUTER)
+  console.log("   Authorized Caller:", proxyAddress)
+
+  const PancakeSwapAdapter = await ethers.getContractFactory("PancakeSwapAdapter")
+  const pancakeAdapter = await PancakeSwapAdapter.deploy(BSC_UNIVERSAL_ROUTER, wbnbAddress, proxyAddress)
+  await pancakeAdapter.waitForDeployment()
+  const pancakeAdapterAddress = await pancakeAdapter.getAddress()
+  console.log("   PancakeSwapAdapter deployed to:", pancakeAdapterAddress)
 
   // 3. Register PancakeSwapAdapter
   console.log("\n3. Registering PancakeSwapAdapter...")
