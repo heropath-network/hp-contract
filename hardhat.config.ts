@@ -1,7 +1,7 @@
-import { HardhatUserConfig } from "hardhat/config";
-import "@nomicfoundation/hardhat-toolbox";
-import "@openzeppelin/hardhat-upgrades";
-import * as dotenv from "dotenv";
+import { HardhatUserConfig } from "hardhat/config"
+import "@nomicfoundation/hardhat-toolbox"
+import "@openzeppelin/hardhat-upgrades"
+import * as dotenv from "dotenv"
 
 dotenv.config();
 
@@ -24,22 +24,14 @@ const config: HardhatUserConfig = {
     hardhat: {
       chainId: 31337,
     },
-    bscTestnet: {
-      url: BSC_TESTNET_RPC,
-      chainId: 97,
-      accounts: [PRIVATE_KEY],
-    },
-    bscMainnet: {
+    bsc: {
       url: BSC_RPC,
       chainId: 56,
       accounts: [PRIVATE_KEY],
     },
   },
   etherscan: {
-    apiKey: {
-      bsc: BSCSCAN_API_KEY,
-      bscTestnet: BSCSCAN_API_KEY,
-    },
+    apiKey: BSCSCAN_API_KEY,
   },
   paths: {
     sources: "./contracts",
@@ -47,6 +39,6 @@ const config: HardhatUserConfig = {
     cache: "./cache",
     artifacts: "./artifacts",
   },
-};
+}
 
-export default config;
+export default config
