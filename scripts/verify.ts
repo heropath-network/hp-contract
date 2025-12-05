@@ -1,44 +1,29 @@
 import { run, network } from "hardhat"
-import * as fs from "fs"
-import * as path from "path"
+import { loadExistingDeployment } from "./deployTools"
 
 // BSC Mainnet addresses
 const BSC_UNIVERSAL_ROUTER = "0xd9C500DfF816a1Da21A48A732d3498Bf09dc9AEB"
 const BSC_WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
 
-// BSC Testnet addresses
-const BSC_TESTNET_WBNB = "0xae13d989daC2f0dEbFf460aC112a837C89BAa7cd"
-
-interface DeploymentInfo {
-  contracts: {
-    HPPropTrading_Proxy: string
-    HPPropTrading_Implementation: string
-    ProxyAdmin: string
-    PancakeSwapAdapter: string
-  }
-}
-
 async function main() {
   console.log("Verifying contracts on", network.name)
 
   // Load deployment info
-  const deploymentsDir = path.join(__dirname, "..", "deployments")
-  const filename = `${network.name}.json`
-  const filepath = path.join(deploymentsDir, filename)
-
-  if (!fs.existsSync(filepath)) {
-    throw new Error(`Deployment file not found: ${filepath}`)
+  const deployment = loadExistingDeployment()
+  if (!deployment) {
+    throw new Error("No deployment found. Run deploy.ts first.")
   }
 
-  const deploymentInfo: DeploymentInfo = JSON.parse(fs.readFileSync(filepath, "utf8"))
-
-  // Verify PancakeSwapAdapter
+  // Verify PancakeSwapAdapter (3 constructor args: router, wbnb, authorizedCaller)
   console.log("\n1. Verifying PancakeSwapAdapter...")
-  const wbnbAddress = network.name === "bscTestnet" ? BSC_TESTNET_WBNB : BSC_WBNB
   try {
     await run("verify:verify", {
-      address: deploymentInfo.contracts.PancakeSwapAdapter,
-      constructorArguments: [BSC_UNIVERSAL_ROUTER, wbnbAddress],
+      address: deployment.contracts.PancakeSwapAdapter,
+      constructorArguments: [
+        BSC_UNIVERSAL_ROUTER,
+        BSC_WBNB,
+        deployment.contracts.HPPropTrading_Proxy,
+      ],
     })
     console.log("   PancakeSwapAdapter verified!")
   } catch (error: any) {
@@ -53,7 +38,7 @@ async function main() {
   console.log("\n2. Verifying HPPropTrading Implementation...")
   try {
     await run("verify:verify", {
-      address: deploymentInfo.contracts.HPPropTrading_Implementation,
+      address: deployment.contracts.HPPropTrading_Implementation,
       constructorArguments: [],
     })
     console.log("   HPPropTrading Implementation verified!")

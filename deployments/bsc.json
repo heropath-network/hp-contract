@@ -1,0 +1,11 @@
+{
+  "network": "bsc",
+  "chainId": 56,
+  "deployedAt": "2025-12-05T13:18:13.723Z",
+  "contracts": {
+    "HPPropTrading_Proxy": "0x32c7dbb045c699dC4A508E0338F4E6De0E31088c",
+    "HPPropTrading_Implementation": "0x9Db53bEbccb2b3B56C3cFB68D7A39A9C378A9847",
+    "ProxyAdmin": "0x1803B3f31d4ECB883799f7D5746fb7a3C44E7a27",
+    "PancakeSwapAdapter": "0x47F2579DEB1DA2E3512f9215604897b95f0b9310"
+  }
+}
