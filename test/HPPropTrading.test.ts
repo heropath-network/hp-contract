@@ -1,17 +1,20 @@
 import { expect } from "chai"
 import { ethers, upgrades } from "hardhat"
-import { HPPropTrading, MockERC20 } from "../typechain-types"
+import { HPPropTrading, MockERC20, MockAdapter } from "../typechain-types"
 import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers"
 
 describe("HPPropTrading", function () {
   let hpPropTrading: HPPropTrading
   let mockToken: MockERC20
+  let mockAdapter: MockAdapter
+  let mockAdapter2: MockAdapter
   let admin: SignerWithAddress
   let dao: SignerWithAddress
   let executor: SignerWithAddress
   let user: SignerWithAddress
 
   const MOCK_ADAPTER_ID = ethers.keccak256(ethers.toUtf8Bytes("MOCK_ADAPTER"))
+  const MOCK_ADAPTER_ID_2 = ethers.keccak256(ethers.toUtf8Bytes("MOCK_ADAPTER_2"))
 
   beforeEach(async function () {
     ;[admin, dao, executor, user] = await ethers.getSigners()
@@ -28,6 +31,13 @@ describe("HPPropTrading", function () {
       kind: "transparent",
     })) as unknown as HPPropTrading
     await hpPropTrading.waitForDeployment()
+
+    // Deploy mock adapters
+    const MockAdapterFactory = await ethers.getContractFactory("MockAdapter")
+    mockAdapter = (await MockAdapterFactory.deploy("MOCK_ADAPTER")) as unknown as MockAdapter
+    await mockAdapter.waitForDeployment()
+    mockAdapter2 = (await MockAdapterFactory.deploy("MOCK_ADAPTER_2")) as unknown as MockAdapter
+    await mockAdapter2.waitForDeployment()
   })
 
   describe("Initialization", function () {
@@ -124,19 +134,19 @@ describe("HPPropTrading", function () {
 
   describe("Aggregator Module - Adapter Management", function () {
     it("should allow admin to register adapter", async function () {
-      await hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
-      expect(await hpPropTrading.getAdapter(MOCK_ADAPTER_ID)).to.equal(user.address)
+      await hpPropTrading.connect(admin).registerAdapter(await mockAdapter.getAddress())
+      expect(await hpPropTrading.getAdapter(MOCK_ADAPTER_ID)).to.equal(await mockAdapter.getAddress())
     })
 
     it("should revert if adapter already exists", async function () {
-      await hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
+      await hpPropTrading.connect(admin).registerAdapter(await mockAdapter.getAddress())
       await expect(
-        hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
+        hpPropTrading.connect(admin).registerAdapter(await mockAdapter.getAddress())
       ).to.be.revertedWith("Adapter already exists")
     })
 
     it("should allow admin to remove adapter", async function () {
-      await hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
+      await hpPropTrading.connect(admin).registerAdapter(await mockAdapter.getAddress())
       await hpPropTrading.connect(admin).removeAdapter(MOCK_ADAPTER_ID)
       expect(await hpPropTrading.getAdapter(MOCK_ADAPTER_ID)).to.equal(ethers.ZeroAddress)
     })
@@ -146,14 +156,13 @@ describe("HPPropTrading", function () {
     })
 
     it("should track adapter IDs correctly", async function () {
-      const adapterId2 = ethers.keccak256(ethers.toUtf8Bytes("ADAPTER_2"))
-      await hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
-      await hpPropTrading.connect(admin).registerAdapter(adapterId2, dao.address)
+      await hpPropTrading.connect(admin).registerAdapter(await mockAdapter.getAddress())
+      await hpPropTrading.connect(admin).registerAdapter(await mockAdapter2.getAddress())
 
       const ids = await hpPropTrading.getAdapterIds()
       expect(ids.length).to.equal(2)
       expect(ids).to.include(MOCK_ADAPTER_ID)
-      expect(ids).to.include(adapterId2)
+      expect(ids).to.include(MOCK_ADAPTER_ID_2)
     })
 
     it("should revert execute if adapter not found", async function () {
@@ -164,7 +173,7 @@ describe("HPPropTrading", function () {
     })
 
     it("should revert execute for non-EXECUTOR", async function () {
-      await hpPropTrading.connect(admin).registerAdapter(MOCK_ADAPTER_ID, user.address)
+      await hpPropTrading.connect(admin).registerAdapter(await mockAdapter.getAddress())
       await expect(
         hpPropTrading.connect(user).execute(MOCK_ADAPTER_ID, "0x")
       ).to.be.reverted
